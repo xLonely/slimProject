@@ -12,11 +12,11 @@ Verileri yüklemek için için CLI'dan proje dizinine giderek kodu çalıştır�
 
 ## Endpoints
 
-    api/posts
+    posts
 
-    api/comments
+    comments
 
-    api/posts/{post_id}/comments
+    posts/{post_id}/comments
 
 
 
