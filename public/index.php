@@ -1,126 +1,189 @@
 <?php
+
+declare(strict_types=1);
+
+use App\Application\Handlers\HttpErrorHandler;
+use App\Application\Handlers\ShutdownHandler;
+use App\Application\ResponseEmitter\ResponseEmitter;
+use App\Application\Settings\SettingsInterface;
+use DI\ContainerBuilder;
+use Slim\Factory\AppFactory;
+use Slim\Factory\ServerRequestCreatorFactory;
+
+use App\Models\DB;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
-use Slim\Factory\AppFactory;
+use Selective\BasePath\BasePathMiddleware;
 
 require __DIR__ . '/../vendor/autoload.php';
 
+// Instantiate PHP-DI ContainerBuilder
+$containerBuilder = new ContainerBuilder();
+
+if (false) { // Should be set to true in production
+	$containerBuilder->enableCompilation(__DIR__ . '/../var/cache');
+}
+
+// Set up settings
+$settings = require __DIR__ . '/../app/settings.php';
+$settings($containerBuilder);
+
+// Set up dependencies
+$dependencies = require __DIR__ . '/../app/dependencies.php';
+$dependencies($containerBuilder);
+
+// Set up repositories
+$repositories = require __DIR__ . '/../app/repositories.php';
+$repositories($containerBuilder);
+
+// Build PHP-DI Container instance
+$container = $containerBuilder->build();
+
+// Instantiate the app
+AppFactory::setContainer($container);
 $app = AppFactory::create();
+$callableResolver = $app->getCallableResolver();
+
+// Register middleware
+$middleware = require __DIR__ . '/../app/middleware.php';
+$middleware($app);
+
+// Register routes
+$routes = require __DIR__ . '/../app/routes.php';
+$routes($app);
+
+/** @var SettingsInterface $settings */
+$settings = $container->get(SettingsInterface::class);
+
+$displayErrorDetails = $settings->get('displayErrorDetails');
+$logError = $settings->get('logError');
+$logErrorDetails = $settings->get('logErrorDetails');
+
+// Create Request object from globals
+$serverRequestCreator = ServerRequestCreatorFactory::create();
+$request = $serverRequestCreator->createServerRequestFromGlobals();
+
+// Create Error Handler
+$responseFactory = $app->getResponseFactory();
+$errorHandler = new HttpErrorHandler($callableResolver, $responseFactory);
+
+// Create Shutdown Handler
+$shutdownHandler = new ShutdownHandler($request, $errorHandler, $displayErrorDetails);
+register_shutdown_function($shutdownHandler);
+
+// Add Routing Middleware
+$app->addRoutingMiddleware();
+
+// Add Body Parsing Middleware
+$app->addBodyParsingMiddleware();
+
+// Add Error Middleware
+$errorMiddleware = $app->addErrorMiddleware($displayErrorDetails, $logError, $logErrorDetails);
+$errorMiddleware->setDefaultErrorHandler($errorHandler);
 
 
-$db = "mysql:host=127.0.0.1;dbname=enf_db;charset=utf8";
-$pdo = new PDO($db, 'root', '',[
-    PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION
-]);
+$app->get('/posts', function (Request $request, Response $response) {
+    $sql = "SELECT * FROM posts";
 
+    try {
+        $db = new Db();
+        $conn = $db->connect();
+        $stmt = $conn->query($sql);
+        $posts = $stmt->fetchAll(PDO::FETCH_OBJ);
+        $db = null;
 
-$app->get('/api/posts', function (Request $request, Response $response, $args) use ($pdo) {
+        $response->getBody()->write(json_encode($posts));
+        return $response
+            ->withHeader('content-type', 'application/json')
+            ->withStatus(200);
+    } catch (PDOException $e) {
+        $error = array(
+            "message" => $e->getMessage()
+        );
 
-    $posts      = $pdo->query('SELECT * from posts');
-    $postsData  = $posts->fetchAll(PDO::FETCH_ASSOC);
-    $body       = json_encode($postsData);
-
-    $response->getBody()->write($body);
-
-    return $response;
+        $response->getBody()->write(json_encode($error));
+        return $response
+            ->withHeader('content-type', 'application/json')
+            ->withStatus(500);
+    }
 });
 
-$app->get('/api/comments', function (Request $request, Response $response, $args) use ($pdo) {
+$app->get('/comments', function (Request $request, Response $response) {
+    $sql = "SELECT * FROM comments";
 
-    $posts      = $pdo->query('SELECT * from comments');
-    $postsData  = $posts->fetchAll(PDO::FETCH_ASSOC);
-    $body       = json_encode($postsData);
+    try {
+        $db = new Db();
+        $conn = $db->connect();
+        $stmt = $conn->query($sql);
+        $comments = $stmt->fetchAll(PDO::FETCH_OBJ);
+        $db = null;
 
-    $response->getBody()->write($body);
+        $response->getBody()->write(json_encode($comments));
+        return $response
+            ->withHeader('content-type', 'application/json')
+            ->withStatus(200);
+    } catch (PDOException $e) {
+        $error = array(
+            "message" => $e->getMessage()
+        );
 
-    return $response;
+        $response->getBody()->write(json_encode($error));
+        return $response
+            ->withHeader('content-type', 'application/json')
+            ->withStatus(500);
+    }
 });
 
-$app->get('/api/posts/{post_id}/comments', function (Request $request, Response $response, $args) use ($pdo) {
-
-
+$app->get('/posts/{post_id}/comments', function (Request $request, Response $response, $args) {
 
     if(count($args) == 0 || empty($args['post_id'])) {
         $response->getBody()->write(json_encode(array("status" => true, "message" => "id parameter must be integer")));
         return $response;
     }
 
-    $query = $pdo->prepare("SELECT * FROM posts WHERE id = ?");
-    $query->execute(
-        array(
-            $args["post_id"]
-        )
-    );
-
-    if($query->rowCount() == 0) {
-        $response->getBody()->write(json_encode(array("status" => true, "message" => "post with id: ".$args["post_id"]." is not found")));
-        return $response;
-    }
-
-    $query      = $pdo->prepare('SELECT * from comments WHERE postId = ?');
-    $query->execute(
-        array(
-            $args['post_id']
-        )
-    );
-    $comments  = $query->fetchAll(2);
-
-    $response->getBody()->write(json_encode(array("status" => true, "items" => $comments)));
-
-    return $response;
-});
-
-
-$app->get('/import/comments', function (Request $request, Response $response, $args) use ($pdo) {
-
-    $data = file_get_contents("https://jsonplaceholder.typicode.com/comments");
-    $data = json_decode($data, true);
-
-    $inserts = array();
-
-    foreach ($data as $item) {
-
-        $inserts[] = "(".$item["id"].",".$item["postId"].", '".$item["name"]."', '".$item["email"]."', '".$item["body"]."')";
-
-    }
-
-    $pdo->query("DELETE FROM comments");
-
     try {
-        $pdo->query("INSERT INTO comments(id, postId, name, email, body) VALUES ".implode(",", $inserts));
-        $response->getBody()->write(json_encode(array("status" => true, "message" => "comments added successfuly")));
-    }
-    catch (PDOException $e) {
-        $response->getBody()->write(json_encode(array("status" => false, "message" => $e->getMessage())));
-    }
+        $db = new Db();
+        $conn = $db->connect();
 
-    return $response->withHeader('Content-Type', 'application/json');
+        $query = $conn->prepare("SELECT * FROM posts WHERE id = ?");
+        $query->execute(
+            array(
+                $args["post_id"]
+            )
+        );
+
+        if($query->rowCount() == 0) {
+            $response->getBody()->write(json_encode(array("status" => true, "message" => "post with id: ".$args["post_id"]." is not found")));
+            return $response;
+        }
+
+        $query      = $conn->prepare('SELECT * from comments WHERE postId = ?');
+        $query->execute(
+            array(
+                $args['post_id']
+            )
+        );
+        $comments  = $query->fetchAll(2);
+        $db = null;
+
+        $response->getBody()->write(json_encode(array("status" => true, "items" => $comments)));
+        return $response
+            ->withHeader('content-type', 'application/json')
+            ->withStatus(200);
+    } catch (PDOException $e) {
+        $error = array(
+            "message" => $e->getMessage()
+        );
+
+        $response->getBody()->write(json_encode($error));
+        return $response
+            ->withHeader('content-type', 'application/json')
+            ->withStatus(500);
+    }
 });
 
-$app->get('/import/posts', function (Request $request, Response $response, $args) use ($pdo) {
 
-    $data = file_get_contents("https://jsonplaceholder.typicode.com/posts");
-    $data = json_decode($data, true);
-
-    $inserts = array();
-
-    foreach ($data as $item) {
-
-        $inserts[] = "(".$item["id"].",".$item["userId"].", '".$item["title"]."', '".$item["body"]."')";
-
-    }
-
-    $pdo->query("DELETE FROM posts");
-
-    try {
-        $pdo->query("INSERT INTO posts(id, userId, title, body) VALUES ".implode(",", $inserts));
-        $response->getBody()->write(json_encode(array("status" => true, "message" => "posts added successfuly")));
-    }
-    catch (PDOException $e) {
-        $response->getBody()->write(json_encode(array("status" => false, "message" => $e->getMessage())));
-    }
-
-    return $response->withHeader('Content-Type', 'application/json');
-});
-
-$app->run();
+// Run App & Emit Response
+$response = $app->handle($request);
+$responseEmitter = new ResponseEmitter();
+$responseEmitter->emit($response);
