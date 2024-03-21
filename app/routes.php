@@ -2,8 +2,9 @@
 
 declare(strict_types=1);
 
-use App\Application\Actions\User\ListUsersAction;
-use App\Application\Actions\User\ViewUserAction;
+use App\Application\Actions\Comments\ListCommentsAction;
+use App\Application\Actions\Posts\ListPostsAction;
+use App\Application\Actions\Posts\ListPostComments;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
 use Slim\App;
@@ -20,8 +21,16 @@ return function (App $app) {
         return $response;
     });
 
-    $app->group('/users', function (Group $group) {
-        $group->get('', ListUsersAction::class);
-        $group->get('/{id}', ViewUserAction::class);
+    $app->group('/posts', function (Group $group) {
+        $group->get('', ListPostsAction::class);
     });
+
+    $app->group('/comments', function (Group $group) {
+        $group->get('', ListCommentsAction::class);
+    });
+
+    $app->group('/posts/{post_id}/comments', function (Group $group) {
+        $group->get('', ListPostComments::class);
+    });
+
 };

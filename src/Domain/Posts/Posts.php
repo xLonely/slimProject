@@ -2,26 +2,26 @@
 
 declare(strict_types=1);
 
-namespace App\Domain\User;
+namespace App\Domain\Posts;
 
 use JsonSerializable;
 
-class User implements JsonSerializable
+class Posts implements JsonSerializable
 {
     private ?int $id;
+    private ?int $userId;
 
-    private string $username;
+    private string $title;
 
-    private string $firstName;
+    private string $body;
 
-    private string $lastName;
 
-    public function __construct(?int $id, string $username, string $firstName, string $lastName)
+    public function __construct(?int $id, ?int $userId, string $title, string $body)
     {
-        $this->id = $id;
-        $this->username = strtolower($username);
-        $this->firstName = ucfirst($firstName);
-        $this->lastName = ucfirst($lastName);
+        $this->id       = $id;
+        $this->userId   = $userId;
+        $this->title    = $title;
+        $this->body     = $body;
     }
 
     public function getId(): ?int
@@ -29,29 +29,30 @@ class User implements JsonSerializable
         return $this->id;
     }
 
-    public function getUsername(): string
+    public function getUserId(): ?int
     {
-        return $this->username;
+        return $this->userId;
     }
 
-    public function getFirstName(): string
+    public function getPostTitle(): string
     {
-        return $this->firstName;
+        return $this->title;
     }
 
-    public function getLastName(): string
+    public function getPostBody(): string
     {
-        return $this->lastName;
+        return $this->body;
     }
+
 
     #[\ReturnTypeWillChange]
     public function jsonSerialize(): array
     {
         return [
-            'id' => $this->id,
-            'username' => $this->username,
-            'firstName' => $this->firstName,
-            'lastName' => $this->lastName,
+            'id'        => $this->id,
+            'userId'    => $this->userId,
+            'title'     => $this->title,
+            'body'      => $this->body,
         ];
     }
 }

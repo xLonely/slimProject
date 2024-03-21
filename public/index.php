@@ -10,11 +10,6 @@ use DI\ContainerBuilder;
 use Slim\Factory\AppFactory;
 use Slim\Factory\ServerRequestCreatorFactory;
 
-use App\Models\DB;
-use Psr\Http\Message\ResponseInterface as Response;
-use Psr\Http\Message\ServerRequestInterface as Request;
-use Selective\BasePath\BasePathMiddleware;
-
 require __DIR__ . '/../vendor/autoload.php';
 
 // Instantiate PHP-DI ContainerBuilder
@@ -80,108 +75,6 @@ $app->addBodyParsingMiddleware();
 // Add Error Middleware
 $errorMiddleware = $app->addErrorMiddleware($displayErrorDetails, $logError, $logErrorDetails);
 $errorMiddleware->setDefaultErrorHandler($errorHandler);
-
-
-$app->get('/posts', function (Request $request, Response $response) {
-    $sql = "SELECT * FROM posts";
-
-    try {
-        $db = new Db();
-        $conn = $db->connect();
-        $stmt = $conn->query($sql);
-        $posts = $stmt->fetchAll(PDO::FETCH_OBJ);
-        $db = null;
-
-        $response->getBody()->write(json_encode($posts));
-        return $response
-            ->withHeader('content-type', 'application/json')
-            ->withStatus(200);
-    } catch (PDOException $e) {
-        $error = array(
-            "message" => $e->getMessage()
-        );
-
-        $response->getBody()->write(json_encode($error));
-        return $response
-            ->withHeader('content-type', 'application/json')
-            ->withStatus(500);
-    }
-});
-
-$app->get('/comments', function (Request $request, Response $response) {
-    $sql = "SELECT * FROM comments";
-
-    try {
-        $db = new Db();
-        $conn = $db->connect();
-        $stmt = $conn->query($sql);
-        $comments = $stmt->fetchAll(PDO::FETCH_OBJ);
-        $db = null;
-
-        $response->getBody()->write(json_encode($comments));
-        return $response
-            ->withHeader('content-type', 'application/json')
-            ->withStatus(200);
-    } catch (PDOException $e) {
-        $error = array(
-            "message" => $e->getMessage()
-        );
-
-        $response->getBody()->write(json_encode($error));
-        return $response
-            ->withHeader('content-type', 'application/json')
-            ->withStatus(500);
-    }
-});
-
-$app->get('/posts/{post_id}/comments', function (Request $request, Response $response, $args) {
-
-    if(count($args) == 0 || empty($args['post_id'])) {
-        $response->getBody()->write(json_encode(array("status" => true, "message" => "id parameter must be integer")));
-        return $response;
-    }
-
-    try {
-        $db = new Db();
-        $conn = $db->connect();
-
-        $query = $conn->prepare("SELECT * FROM posts WHERE id = ?");
-        $query->execute(
-            array(
-                $args["post_id"]
-            )
-        );
-
-        if($query->rowCount() == 0) {
-            $response->getBody()->write(json_encode(array("status" => true, "message" => "post with id: ".$args["post_id"]." is not found")));
-            return $response;
-        }
-
-        $query      = $conn->prepare('SELECT * from comments WHERE postId = ?');
-        $query->execute(
-            array(
-                $args['post_id']
-            )
-        );
-        $comments  = $query->fetchAll(2);
-        $db = null;
-
-        $response->getBody()->write(json_encode(array("status" => true, "items" => $comments)));
-        return $response
-            ->withHeader('content-type', 'application/json')
-            ->withStatus(200);
-    } catch (PDOException $e) {
-        $error = array(
-            "message" => $e->getMessage()
-        );
-
-        $response->getBody()->write(json_encode($error));
-        return $response
-            ->withHeader('content-type', 'application/json')
-            ->withStatus(500);
-    }
-});
-
 
 // Run App & Emit Response
 $response = $app->handle($request);

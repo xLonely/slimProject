@@ -2,19 +2,19 @@
 
 declare(strict_types=1);
 
-namespace App\Domain\User;
+namespace App\Domain\Posts;
 
-interface UserRepository
+interface PostsRepository
 {
     /**
-     * @return User[]
+     * @return Posts[]
      */
     public function findAll(): array;
 
     /**
      * @param int $id
-     * @return User
-     * @throws UserNotFoundException
+     * @return Posts
+     * @throws PostsNotFoundException
      */
-    public function findUserOfId(int $id): User;
+    public function findPostsOfId(int $id): Posts;
 }
