@@ -12,9 +12,9 @@ Demo dataları içeri aktarmak için CLI ile proje klasöründe kodu çalıştı
 
 ## Endpoints
 
-    api/posts
+    posts
 
-    api/comments
+    comments
 
-    api/posts/{post_id}/comments
+    posts/{post_id}/comments
 
